@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ==========================================
-// 1. Firebase Configuration (อย่าลืมใส่ของคุณ)
+// 1. Firebase Configuration (เปลี่ยนเป็นค่าของคุณ)
 // ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyDi_YY7DbZoKWo42LDFxe2NYJs8jeIc21E",
@@ -44,7 +44,7 @@ const getRoleBadge = (role) => {
 };
 
 // ==========================================
-// 3. Authentication Rules (ลบ initDB ออกแล้ว)
+// 3. Authentication Rules
 // ==========================================
 window.checkAuthStatus = (reqRole) => {
     if (!currentUser && reqRole !== 'login') window.location.href = 'index.html'; 
@@ -61,11 +61,12 @@ window.handleLogin = async (e) => {
     const passInp = document.getElementById('loginPassword').value;
     
     try {
-        // 🔍 [SELECT] ค้นหาข้อมูลผู้ใช้งาน
         const userDoc = await getDoc(doc(db, "users", userInp));
         
         if (userDoc.exists() && userDoc.data().password === passInp) {
             const userData = userDoc.data();
+            // เก็บ docId สำรองไว้ด้วยเผื่อกรณีฐานข้อมูลไม่มีฟิลด์ uid
+            userData.uid = userData.uid || userDoc.id; 
             sessionStorage.setItem('hr_currentUser', JSON.stringify(userData));
             window.location.href = userData.role === 'leader' ? 'manager.html' : `${userData.role}.html`;
         } else {
@@ -97,7 +98,6 @@ window.handleStampTime = async () => {
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
-        // 📝 [INSERT] เพิ่มประวัติเข้างาน
         await addDoc(recordsRef, { empID: currentUser.uid, timestamp: new Date(), workDate: todayStr, timeIn: currentTime, timeOut: "", workHours: 0.0, otHours: 0.0, details: det, location: loc, status: "Working" });
         window.showSwal('CHECK-IN สำเร็จ', `เข้างานเวลา: ${currentTime} น.`, 'success');
         refreshUI();
@@ -116,7 +116,6 @@ window.handleStampTime = async () => {
                 const normalHrs = Math.min(8, totalHrs).toFixed(2);
                 const otHrs = Math.max(0, totalHrs - 8).toFixed(2);
                 
-                // ✏️ [UPDATE] บันทึกเวลาออก
                 await updateDoc(doc(db, "workRecords", recordDoc.id), { timeOut: currentTime, workHours: parseFloat(normalHrs), otHours: parseFloat(otHrs), details: det, location: loc, status: "Completed" });
                 window.showSwal('CHECK-OUT สำเร็จ', `ชั่วโมงทำงาน: ${normalHrs} ชม.`, 'success');
                 refreshUI();
@@ -174,8 +173,10 @@ window.updateLeaveStatus = async (leaveId, status, empID, type) => {
         const userSnap = await getDoc(userDocRef);
         if(userSnap.exists()) {
             const userData = userSnap.data();
-            userData.leaveBalances[type] -= 1;
-            await updateDoc(userDocRef, { leaveBalances: userData.leaveBalances });
+            if (userData.leaveBalances && userData.leaveBalances[type] > 0) {
+                userData.leaveBalances[type] -= 1;
+                await updateDoc(userDocRef, { leaveBalances: userData.leaveBalances });
+            }
         }
     }
     window.showSwal('บันทึกสำเร็จ', `สถานะ: ${status}`, status === 'อนุมัติ' ? 'success' : 'info'); 
@@ -210,7 +211,6 @@ window.deleteEmployee = (id) => {
     if(id === 'admin') return window.showSwal('ปฏิเสธ', 'ไม่สามารถลบ Admin ได้', 'error'); 
     Swal.fire({ title: 'ยืนยันการลบ?', text: 'ข้อมูลจะถูกลบถาวร', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'ลบข้อมูล' }).then(async (result) => {
         if(result.isConfirmed) { 
-            // 🗑️ [DELETE] ลบพนักงาน
             await deleteDoc(doc(db, "users", id)); 
             refreshUI(); 
         }
@@ -221,22 +221,29 @@ window.currentEditEmpId = null;
 
 window.openEditEmployeeModal = async (uid) => {
     try {
+        if (!uid || uid === 'undefined') {
+            return window.showSwal('ข้อผิดพลาด', 'รหัสพนักงานไม่ถูกต้อง หรือไม่มีในระบบ', 'error');
+        }
+
         const userDoc = await getDoc(doc(db, "users", uid));
+        
         if (userDoc.exists()) {
             const u = userDoc.data();
             window.currentEditEmpId = uid;
             
-            document.getElementById('editEmpIdDisplay').value = u.uid;
+            document.getElementById('editEmpIdDisplay').value = u.uid || uid;
             document.getElementById('editEmpIdCardInput').value = u.idCard || '';
             document.getElementById('editEmpNameInput').value = `${u.Name || ''} ${u.SurName || ''}`.trim();
             document.getElementById('editEmpRoleInput').value = u.role || 'employee';
             
-            // ใช้ getOrCreateInstance ป้องกัน Error จอดำ
             const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editEmpModal'));
             modal.show();
+        } else {
+            window.showSwal('ข้อผิดพลาด', 'ไม่พบข้อมูลพนักงานคนนี้ในฐานข้อมูล', 'error');
         }
     } catch (error) {
-        window.showSwal('ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลพนักงานได้', 'error');
+        console.error("เกิดข้อผิดพลาดในการดึงข้อมูล:", error);
+        window.showSwal('ไม่สามารถเข้าถึงข้อมูลได้', error.message, 'error');
     }
 };
 
@@ -255,12 +262,10 @@ window.saveEditEmployee = async () => {
     const newName = nameParts[0];
     const newSurName = nameParts.slice(1).join(' ');
 
-    // 🔒 เปลี่ยนสถานะปุ่มเป็นกำลังโหลด เพื่อกันกดซ้ำ
     const btn = document.getElementById('btnSaveEdit');
     if(btn) { btn.disabled = true; btn.innerHTML = 'กำลังบันทึก...'; }
 
     try {
-        // ✏️ [UPDATE] บันทึกข้อมูลที่แก้ไขลง Firebase
         await updateDoc(doc(db, "users", uid), {
             idCard: newIdCard,
             password: newIdCard ? newIdCard.slice(-4) : '1234',
@@ -269,7 +274,6 @@ window.saveEditEmployee = async () => {
             role: newRole
         });
         
-        // ปิดหน้าต่าง Modal อย่างเป็นระบบ
         const modal = bootstrap.Modal.getInstance(document.getElementById('editEmpModal'));
         if(modal) modal.hide();
         
@@ -294,21 +298,27 @@ const refreshUI = async () => {
 window.renderAdminUI = async () => {
     if(!document.getElementById('adminEmployeeTableBody')) return;
     
+    // ดึงข้อมูล Users พร้อมเก็บ ID ของ Document ไว้สำรอง (docId)
     const usersSnap = await getDocs(collection(db, "users"));
-    const users = usersSnap.docs.map(doc => doc.data());
+    const users = usersSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    
     const leavesSnap = await getDocs(collection(db, "leaves"));
     const leaves = leavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     const empTbody = document.getElementById('adminEmployeeTableBody');
     empTbody.innerHTML = '';
+    
     users.forEach(u => {
+        // ใช้ uid หากไม่มีให้ใช้ docId ที่เป็นตัวหลักแทน
+        const safeUid = u.uid || u.docId; 
+        
         empTbody.innerHTML += `<tr>
-            <td><span class="fw-bold text-primary">${u.uid}</span></td>
-            <td><span class="fw-medium">${u.Name} ${u.SurName || ''}</span></td>
+            <td><span class="fw-bold text-primary">${safeUid}</span></td>
+            <td><span class="fw-medium">${u.Name || '-'} ${u.SurName || ''}</span></td>
             <td>${getRoleBadge(u.role)}</td>
             <td>
-                <button class="btn btn-sm btn-outline-secondary me-1" onclick="window.openEditEmployeeModal('${u.uid}')"><i class="bi bi-pencil"></i> แก้ไข</button>
-                <button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${u.uid}')"><i class="bi bi-trash"></i> ลบ</button>
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="window.openEditEmployeeModal('${safeUid}')"><i class="bi bi-pencil"></i> แก้ไข</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${safeUid}')"><i class="bi bi-trash"></i> ลบ</button>
             </td>
         </tr>`;
     });
@@ -316,10 +326,10 @@ window.renderAdminUI = async () => {
     const approveTbody = document.getElementById('adminApproveManagerTableBody');
     if(approveTbody) {
         approveTbody.innerHTML = '';
-        leaves.filter(l => users.find(x => x.uid === l.empID)?.role === 'leader').forEach(l => {
-            const u = users.find(x => x.uid === l.empID);
+        leaves.filter(l => users.find(x => (x.uid || x.docId) === l.empID)?.role === 'leader').forEach(l => {
+            const u = users.find(x => (x.uid || x.docId) === l.empID);
             let btnHTML = l.status === 'รอพิจารณา' ? `<button class="btn btn-sm btn-primary me-1" onclick="window.updateLeaveStatus('${l.id}','อนุมัติ','${l.empID}','${l.type}')">อนุมัติ</button><button class="btn btn-sm btn-outline-danger" onclick="window.updateLeaveStatus('${l.id}','ไม่อนุมัติ','${l.empID}','${l.type}')">ไม่อนุมัติ</button>` : `-`;
-            approveTbody.innerHTML += `<tr><td><span class="fw-medium">${u.Name}</span></td><td>${leaveTypesTH[l.type]}</td><td>${l.date}</td><td class="text-start">${l.reason}</td><td>${getStatusBadge(l.status)}</td><td>${btnHTML}</td></tr>`;
+            approveTbody.innerHTML += `<tr><td><span class="fw-medium">${u ? u.Name : '-'}</span></td><td>${leaveTypesTH[l.type]}</td><td>${l.date}</td><td class="text-start">${l.reason}</td><td>${getStatusBadge(l.status)}</td><td>${btnHTML}</td></tr>`;
         });
     }
 
@@ -327,7 +337,7 @@ window.renderAdminUI = async () => {
     if(reportTbody) {
         reportTbody.innerHTML = '';
         leaves.forEach(l => {
-            const u = users.find(x => x.uid === l.empID);
+            const u = users.find(x => (x.uid || x.docId) === l.empID);
             reportTbody.innerHTML += `<tr><td><span class="fw-medium text-primary">${l.empID}</span></td><td>${u ? u.Name : '-'}</td><td>${u ? getRoleBadge(u.role) : '-'}</td><td>${leaveTypesTH[l.type]}</td><td>${l.date}</td><td>${getStatusBadge(l.status)}</td></tr>`;
         });
     }
@@ -337,34 +347,45 @@ window.renderManagerUI = async () => {
     await window.renderEmployeeUI(); 
     
     const usersSnap = await getDocs(collection(db, "users"));
-    const users = usersSnap.docs.map(doc => doc.data());
+    const users = usersSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    
     const leavesSnap = await getDocs(collection(db, "leaves"));
     const leaves = leavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     const tbody = document.getElementById('managerApprovalTableBody');
     if(tbody) {
         tbody.innerHTML = '';
-        leaves.filter(l => users.find(u => u.uid === l.empID)?.role === 'employee').forEach(l => {
-            const u = users.find(u => u.uid === l.empID);
+        leaves.filter(l => users.find(u => (u.uid || u.docId) === l.empID)?.role === 'employee').forEach(l => {
+            const u = users.find(x => (x.uid || x.docId) === l.empID);
             let btnHTML = l.status === 'รอพิจารณา' ? `<button class="btn btn-sm btn-primary me-1 mb-1" onclick="window.updateLeaveStatus('${l.id}','อนุมัติ','${l.empID}','${l.type}')">อนุมัติ</button><button class="btn btn-sm btn-outline-danger me-1 mb-1" onclick="window.updateLeaveStatus('${l.id}','ไม่อนุมัติ','${l.empID}','${l.type}')">ปฏิเสธ</button>` : `-`;
-            tbody.innerHTML += `<tr><td><span class="fw-medium">${u.Name}</span></td><td>${leaveTypesTH[l.type]}</td><td>${l.date}</td><td class="text-start">${l.reason}</td><td>${getStatusBadge(l.status)}</td><td>${btnHTML}</td></tr>`;
+            tbody.innerHTML += `<tr><td><span class="fw-medium">${u ? u.Name : '-'}</span></td><td>${leaveTypesTH[l.type]}</td><td>${l.date}</td><td class="text-start">${l.reason}</td><td>${getStatusBadge(l.status)}</td><td>${btnHTML}</td></tr>`;
         });
     }
 };
 
 window.renderEmployeeUI = async () => {
     const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-    if(userDoc.exists()) currentUser = userDoc.data();
+    if(userDoc.exists()) {
+        currentUser = userDoc.data();
+        currentUser.uid = currentUser.uid || userDoc.id;
+    }
 
-    ['Menu', 'Time'].forEach(s => { if(document.getElementById(`empProfileName${s}`)) document.getElementById(`empProfileName${s}`).innerText = `${currentUser.Name} ${currentUser.SurName || ''}`; });
+    ['Menu', 'Time'].forEach(s => { if(document.getElementById(`empProfileName${s}`)) document.getElementById(`empProfileName${s}`).innerText = `${currentUser.Name || ''} ${currentUser.SurName || ''}`.trim(); });
     if(document.getElementById('empProfileId')) document.getElementById('empProfileId').innerText = currentUser.uid;
     if(document.getElementById('empProfileRole')) document.getElementById('empProfileRole').innerText = currentUser.role === 'leader' ? 'Manager' : 'Staff';
 
     if(document.getElementById('statPersBal')) {
         const total = currentUser.leaveTotal || { sick: 30, personal: 3.5, annual: 6 };
-        document.getElementById('statPersBal').innerText = currentUser.leaveBalances.personal; document.getElementById('statPersUsed').innerText = (total.personal - currentUser.leaveBalances.personal).toFixed(1);
-        document.getElementById('statSickBal').innerText = currentUser.leaveBalances.sick; document.getElementById('statSickUsed').innerText = total.sick - currentUser.leaveBalances.sick;
-        document.getElementById('statAnnBal').innerText = currentUser.leaveBalances.annual; document.getElementById('statAnnUsed').innerText = total.annual - currentUser.leaveBalances.annual;
+        const balances = currentUser.leaveBalances || { sick: 30, personal: 3.5, annual: 6 };
+        
+        document.getElementById('statPersBal').innerText = balances.personal; 
+        document.getElementById('statPersUsed').innerText = (total.personal - balances.personal).toFixed(1);
+        
+        document.getElementById('statSickBal').innerText = balances.sick; 
+        document.getElementById('statSickUsed').innerText = total.sick - balances.sick;
+        
+        document.getElementById('statAnnBal').innerText = balances.annual; 
+        document.getElementById('statAnnUsed').innerText = total.annual - balances.annual;
     }
 
     const leavesSnap = await getDocs(query(collection(db, "leaves"), where("empID", "==", currentUser.uid)));
