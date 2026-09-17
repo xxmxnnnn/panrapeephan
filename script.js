@@ -221,7 +221,16 @@ window.handleAddEmployee = async (e) => {
     if(docSnap.exists()) return window.showSwal('ผิดพลาด', 'รหัสพนักงานซ้ำ', 'error');
     const autoPassword = idCard.slice(-4); 
 
-    await setDoc(doc(db, "users", newId), { uid: newId, idCard, password: autoPassword, Name: document.getElementById('regName').value, SurName: '', role: document.getElementById('regRole').value, leaveBalances: { sick: 30, personal: 3, annual: 6 }, leaveTotal: { sick: 30, personal: 3, annual: 6 } });
+    await setDoc(doc(db, "users", newId), { 
+        uid: newId, 
+        idCard: idCard, 
+        password: autoPassword, 
+        Name: document.getElementById('regName').value, 
+        SurName: '', 
+        role: document.getElementById('regRole').value, 
+        leaveBalances: { sick: 30, personal: 3, annual: 6 }, 
+        leaveTotal: { sick: 30, personal: 3, annual: 6 } 
+    });
     document.getElementById('addEmployeeForm').reset(); 
     window.showSwal('สำเร็จ!', `สร้างบัญชีเรียบร้อย\nรหัสผ่านคือ: ${autoPassword}`, 'success');
     refreshUI();
@@ -232,6 +241,58 @@ window.deleteEmployee = (id) => {
     Swal.fire({ title: 'ยืนยันการลบ?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'ลบข้อมูล' }).then(async (result) => {
         if(result.isConfirmed) { await deleteDoc(doc(db, "users", id)); refreshUI(); }
     });
+};
+
+window.currentEditEmpId = null;
+
+window.openEditEmployeeModal = async (uid) => {
+    try {
+        const userDoc = await getDoc(doc(db, "users", uid));
+        if (userDoc.exists()) {
+            const u = userDoc.data();
+            window.currentEditEmpId = uid;
+            
+            document.getElementById('editEmpIdDisplay').value = u.uid;
+            document.getElementById('editEmpIdCardInput').value = u.idCard || '';
+            document.getElementById('editEmpNameInput').value = `${u.Name || ''} ${u.SurName || ''}`.trim();
+            document.getElementById('editEmpRoleInput').value = u.role || 'employee';
+            
+            new bootstrap.Modal(document.getElementById('editEmpModal')).show();
+        }
+    } catch (error) {
+        window.showSwal('ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลพนักงานได้', 'error');
+    }
+};
+
+window.saveEditEmployee = async () => {
+    const uid = window.currentEditEmpId;
+    if (!uid) return;
+    
+    const newIdCard = document.getElementById('editEmpIdCardInput').value.trim();
+    const fullName = document.getElementById('editEmpNameInput').value.trim();
+    const newRole = document.getElementById('editEmpRoleInput').value;
+    
+    if (newIdCard && newIdCard.length !== 13) return window.showSwal('ข้อผิดพลาด', 'เลข ปชช. ต้องมี 13 หลัก', 'error');
+    
+    const nameParts = fullName.split(' ');
+    const newName = nameParts[0];
+    const newSurName = nameParts.slice(1).join(' ');
+
+    try {
+        await updateDoc(doc(db, "users", uid), {
+            idCard: newIdCard,
+            password: newIdCard ? newIdCard.slice(-4) : '1234',
+            Name: newName,
+            SurName: newSurName,
+            role: newRole
+        });
+        
+        bootstrap.Modal.getInstance(document.getElementById('editEmpModal')).hide();
+        window.showSwal('สำเร็จ', 'อัปเดตข้อมูลพนักงานเรียบร้อย', 'success');
+        refreshUI();
+    } catch (error) {
+        window.showSwal('ข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลได้', 'error');
+    }
 };
 
 // ==========================================
@@ -251,10 +312,19 @@ window.renderAdminUI = async () => {
     const leavesSnap = await getDocs(collection(db, "leaves"));
     const leaves = leavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+    // แก้ไขตรงนี้: เพิ่มปุ่มแก้ไขข้อมูลพนักงานเข้ามาแล้ว
     const empTbody = document.getElementById('adminEmployeeTableBody');
     empTbody.innerHTML = '';
     users.forEach(u => {
-        empTbody.innerHTML += `<tr><td><span class="fw-bold text-primary">${u.uid}</span></td><td><span class="fw-medium">${u.Name} ${u.SurName}</span></td><td>${getRoleBadge(u.role)}</td><td><button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${u.uid}')"><i class="bi bi-trash"></i> ลบ</button></td></tr>`;
+        empTbody.innerHTML += `<tr>
+            <td><span class="fw-bold text-primary">${u.uid}</span></td>
+            <td><span class="fw-medium">${u.Name} ${u.SurName || ''}</span></td>
+            <td>${getRoleBadge(u.role)}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="window.openEditEmployeeModal('${u.uid}')"><i class="bi bi-pencil"></i> แก้ไข</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${u.uid}')"><i class="bi bi-trash"></i> ลบ</button>
+            </td>
+        </tr>`;
     });
 
     const approveTbody = document.getElementById('adminApproveManagerTableBody');
@@ -278,7 +348,7 @@ window.renderAdminUI = async () => {
 };
 
 window.renderManagerUI = async () => {
-    await window.renderEmployeeUI(); // Manager needs personal stats too
+    await window.renderEmployeeUI(); 
     
     const usersSnap = await getDocs(collection(db, "users"));
     const users = usersSnap.docs.map(doc => doc.data());
@@ -300,7 +370,7 @@ window.renderEmployeeUI = async () => {
     const userDoc = await getDoc(doc(db, "users", currentUser.uid));
     if(userDoc.exists()) currentUser = userDoc.data();
 
-    ['Menu', 'Time'].forEach(s => { if(document.getElementById(`empProfileName${s}`)) document.getElementById(`empProfileName${s}`).innerText = `${currentUser.Name} ${currentUser.SurName}`; });
+    ['Menu', 'Time'].forEach(s => { if(document.getElementById(`empProfileName${s}`)) document.getElementById(`empProfileName${s}`).innerText = `${currentUser.Name} ${currentUser.SurName || ''}`; });
     if(document.getElementById('empProfileId')) document.getElementById('empProfileId').innerText = currentUser.uid;
     if(document.getElementById('empProfileRole')) document.getElementById('empProfileRole').innerText = currentUser.role === 'leader' ? 'Manager' : 'Staff';
 
@@ -342,7 +412,7 @@ window.renderEmployeeUI = async () => {
         if (!data.timeOut) {
             btnStamp.disabled = false; btnStamp.className = "btn btn-danger btn-lg w-100 rounded-pill shadow-sm"; btnStamp.innerHTML = 'แสตมป์ออกงาน';
         } else {
-            btnStamp.disabled = true; btnStamp.className = "btn btn-outline-secondary btn-lg w-100 rounded-pill"; btnStamp.innerHTML = 'บันทึกเวลาครบแล้ว';
+            btnStamp.disabled = true; btnStamp.className = "btn btn-outline-secondary btn-lg w-100 rounded-pill"; btnStamp.innerHTML = 'บันริกเวลาครบแล้ว';
         }
     } else {
         document.getElementById('displayCheckIn').innerText = '-'; document.getElementById('displayCheckOut').innerText = '-';
