@@ -59,14 +59,20 @@ const getRoleBadge = (role) => {
 const initDB = async () => {
     try {
         const usersRef = collection(db, "users");
+        
+        // 🔍 [SELECT] ดึงข้อมูลทั้งหมดจากตาราง users (เหมือน SELECT * FROM users)
         const snapshot = await getDocs(usersRef);
+        
         if (snapshot.empty) {
             const defaultUsers = [
                 { uid: 'admin', password: '1234', role: 'admin', Name: 'ผู้ดูแลระบบ', SurName: 'สูงสุด', leaveBalances: { sick: 0, personal: 0, annual: 0 }, leaveTotal: { sick: 0, personal: 0, annual: 0 } },
                 { uid: 'mgr01', password: '1234', role: 'leader', Name: 'สมศักดิ์', SurName: 'ผู้นำ', leaveBalances: { sick: 30, personal: 3, annual: 6 }, leaveTotal: { sick: 30, personal: 3, annual: 6 } },
                 { uid: 'emp01', password: '1234', role: 'employee', Name: 'ปานระพีพรรณ', SurName: 'ทิวบุญเลี้ยง', leaveBalances: { sick: 28, personal: 2.5, annual: 6 }, leaveTotal: { sick: 30, personal: 3.5, annual: 6 } }
             ];
-            for (const user of defaultUsers) await setDoc(doc(usersRef, user.uid), user);
+            for (const user of defaultUsers) {
+                // 📝 [INSERT] เพิ่มข้อมูลลงตาราง users โดยระบุ ID เอง (เหมือน INSERT INTO users ...)
+                await setDoc(doc(usersRef, user.uid), user);
+            }
         }
     } catch (e) {
         console.error("Firebase Rule อาจจะล็อกอยู่: ", e);
@@ -92,7 +98,9 @@ window.handleLogin = async (e) => {
     const passInp = document.getElementById('loginPassword').value;
     
     try {
+        // 🔍 [SELECT] ค้นหา User 1 รายการด้วย ID (เหมือน SELECT * FROM users WHERE uid = userInp)
         const userDoc = await getDoc(doc(db, "users", userInp));
+        
         if (userDoc.exists() && userDoc.data().password === passInp) {
             const userData = userDoc.data();
             sessionStorage.setItem('hr_currentUser', JSON.stringify(userData));
@@ -120,13 +128,17 @@ window.handleStampTime = async () => {
 
     const todayStr = new Date().toLocaleDateString('en-CA');
     const currentTime = new Date().toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute:'2-digit' });
+    
     const recordsRef = collection(db, "workRecords");
     
+    // 🔍 [SELECT + WHERE] ค้นหาประวัติลงเวลาของวันนี้ (เหมือน SELECT * FROM workRecords WHERE empID = '...' AND workDate = '...')
     const q = query(recordsRef, where("empID", "==", currentUser.uid), where("workDate", "==", todayStr));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
+        // 📝 [INSERT] เพิ่มประวัติเข้างานใหม่ ให้ระบบสุ่ม ID ให้ (เหมือน INSERT INTO workRecords ...)
         await addDoc(recordsRef, { empID: currentUser.uid, timestamp: new Date(), workDate: todayStr, timeIn: currentTime, timeOut: "", workHours: 0.0, otHours: 0.0, details: det, location: loc, status: "Working" });
+        
         window.showSwal('CHECK-IN สำเร็จ', `เข้างานเวลา: ${currentTime} น.`, 'success');
         refreshUI();
     } else {
@@ -144,7 +156,9 @@ window.handleStampTime = async () => {
                 const normalHrs = Math.min(8, totalHrs).toFixed(2);
                 const otHrs = Math.max(0, totalHrs - 8).toFixed(2);
 
+                // ✏️ [UPDATE] แก้ไขบันทึกออกงาน (เหมือน UPDATE workRecords SET timeOut = '...' WHERE id = recordDoc.id)
                 await updateDoc(doc(db, "workRecords", recordDoc.id), { timeOut: currentTime, workHours: parseFloat(normalHrs), otHours: parseFloat(otHrs), details: det, location: loc, status: "Completed" });
+                
                 window.showSwal('CHECK-OUT สำเร็จ', `ชั่วโมงทำงาน: ${normalHrs} ชม.`, 'success');
                 refreshUI();
             }
@@ -157,13 +171,18 @@ window.saveDailyDetails = async (e) => {
     const loc = document.getElementById('workLocation').value;
     const det = document.getElementById('workDetails').value;
     const todayStr = new Date().toLocaleDateString('en-CA');
+    
+    // 🔍 [SELECT + WHERE] ค้นหาประวัติลงเวลาของวันนี้
     const q = query(collection(db, "workRecords"), where("empID", "==", currentUser.uid), where("workDate", "==", todayStr));
     const snapshot = await getDocs(q);
 
     if (!snapshot.empty) {
+        // ✏️ [UPDATE] แก้ไขรายละเอียดงาน
         await updateDoc(doc(db, "workRecords", snapshot.docs[0].id), { location: loc, details: det });
         window.showSwal('บันทึกสำเร็จ', 'อัปเดตรายละเอียดงานเรียบร้อย', 'success');
-    } else { window.showSwal('ข้อผิดพลาด', 'กรุณา CHECK-IN ก่อนบันทึกรายละเอียด', 'error'); }
+    } else { 
+        window.showSwal('ข้อผิดพลาด', 'กรุณา CHECK-IN ก่อนบันทึกรายละเอียด', 'error'); 
+    }
 };
 
 // ==========================================
@@ -178,6 +197,7 @@ window.handleLeaveSubmit = async (e) => {
     if(!type) return window.showSwal('ข้อมูลไม่ครบ', 'เลือกประเภทการลา', 'warning');
     if(currentUser.leaveBalances[type] <= 0) return window.showSwal('สิทธิหมด', `สิทธิ ${leaveTypesTH[type]} หมดแล้ว`, 'error');
 
+    // 📝 [INSERT] เพิ่มรายการยื่นลาลงตาราง leaves
     await addDoc(collection(db, "leaves"), { empID: currentUser.uid, type, date, reason, status: 'รอพิจารณา', timestamp: new Date() });
     
     document.getElementById('leaveType').value = ''; document.getElementById('leaveDate').value = ''; document.getElementById('leaveReason').value = '';
@@ -188,6 +208,7 @@ window.handleLeaveSubmit = async (e) => {
 window.cancelMyLeave = (leaveId) => {
     Swal.fire({ title: 'ยกเลิกคำขอ?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'ยกเลิกคำขอ' }).then(async (result) => {
         if (result.isConfirmed) {
+            // ✏️ [UPDATE] เปลี่ยนสถานะการลาเป็นยกเลิก
             await updateDoc(doc(db, "leaves", leaveId), { status: 'ยกเลิก' });
             window.showSwal('ยกเลิกสำเร็จ', '', 'success'); refreshUI();
         }
@@ -195,13 +216,17 @@ window.cancelMyLeave = (leaveId) => {
 };
 
 window.updateLeaveStatus = async (leaveId, status, empID, type) => {
+    // ✏️ [UPDATE] หัวหน้างาน/แอดมิน เปลี่ยนสถานะการลา
     await updateDoc(doc(db, "leaves", leaveId), { status: status });
+    
     if(status === 'อนุมัติ') {
         const userDocRef = doc(db, "users", empID);
+        // 🔍 [SELECT] ดึงข้อมูลพนักงานเพื่อหักลบสิทธิ์การลา
         const userSnap = await getDoc(userDocRef);
         if(userSnap.exists()) {
             const userData = userSnap.data();
             userData.leaveBalances[type] -= 1;
+            // ✏️ [UPDATE] อัปเดตสิทธิ์การลาที่เหลือ
             await updateDoc(userDocRef, { leaveBalances: userData.leaveBalances });
         }
     }
@@ -216,11 +241,14 @@ window.handleAddEmployee = async (e) => {
     e.preventDefault();
     const newId = document.getElementById('regId').value;
     const idCard = document.getElementById('regIdCard').value;
+    
+    // 🔍 [SELECT] เช็คว่ามีรหัสพนักงานนี้ในระบบหรือยัง
     const docSnap = await getDoc(doc(db, "users", newId));
-
     if(docSnap.exists()) return window.showSwal('ผิดพลาด', 'รหัสพนักงานซ้ำ', 'error');
+    
     const autoPassword = idCard.slice(-4); 
 
+    // 📝 [INSERT] บันทึกข้อมูลพนักงานใหม่ลงตาราง users
     await setDoc(doc(db, "users", newId), { 
         uid: newId, 
         idCard: idCard, 
@@ -231,6 +259,7 @@ window.handleAddEmployee = async (e) => {
         leaveBalances: { sick: 30, personal: 3, annual: 6 }, 
         leaveTotal: { sick: 30, personal: 3, annual: 6 } 
     });
+    
     document.getElementById('addEmployeeForm').reset(); 
     window.showSwal('สำเร็จ!', `สร้างบัญชีเรียบร้อย\nรหัสผ่านคือ: ${autoPassword}`, 'success');
     refreshUI();
@@ -239,7 +268,11 @@ window.handleAddEmployee = async (e) => {
 window.deleteEmployee = (id) => { 
     if(id === 'admin') return window.showSwal('ปฏิเสธ', 'ไม่สามารถลบ Admin ได้', 'error'); 
     Swal.fire({ title: 'ยืนยันการลบ?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'ลบข้อมูล' }).then(async (result) => {
-        if(result.isConfirmed) { await deleteDoc(doc(db, "users", id)); refreshUI(); }
+        if(result.isConfirmed) { 
+            // 🗑️ [DELETE] ลบข้อมูลพนักงานออกจากตาราง users (เหมือน DELETE FROM users WHERE uid = id)
+            await deleteDoc(doc(db, "users", id)); 
+            refreshUI(); 
+        }
     });
 };
 
@@ -247,6 +280,7 @@ window.currentEditEmpId = null;
 
 window.openEditEmployeeModal = async (uid) => {
     try {
+        // 🔍 [SELECT] ดึงข้อมูลพนักงานเพื่อเอามาใส่ในฟอร์มแก้ไข
         const userDoc = await getDoc(doc(db, "users", uid));
         if (userDoc.exists()) {
             const u = userDoc.data();
@@ -279,6 +313,7 @@ window.saveEditEmployee = async () => {
     const newSurName = nameParts.slice(1).join(' ');
 
     try {
+        // ✏️ [UPDATE] อัปเดตข้อมูลพนักงานที่แก้ไขลงตาราง
         await updateDoc(doc(db, "users", uid), {
             idCard: newIdCard,
             password: newIdCard ? newIdCard.slice(-4) : '1234',
@@ -307,12 +342,14 @@ const refreshUI = async () => {
 window.renderAdminUI = async () => {
     if(!document.getElementById('adminEmployeeTableBody')) return;
     
+    // 🔍 [SELECT] ดึงข้อมูล users ทั้งหมดมาสร้างตาราง
     const usersSnap = await getDocs(collection(db, "users"));
     const users = usersSnap.docs.map(doc => doc.data());
+    
+    // 🔍 [SELECT] ดึงข้อมูล leaves (การลา) ทั้งหมดมาสร้างตารางอนุมัติ
     const leavesSnap = await getDocs(collection(db, "leaves"));
     const leaves = leavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // แก้ไขตรงนี้: เพิ่มปุ่มแก้ไขข้อมูลพนักงานเข้ามาแล้ว
     const empTbody = document.getElementById('adminEmployeeTableBody');
     empTbody.innerHTML = '';
     users.forEach(u => {
@@ -350,6 +387,7 @@ window.renderAdminUI = async () => {
 window.renderManagerUI = async () => {
     await window.renderEmployeeUI(); 
     
+    // 🔍 [SELECT] ดึงข้อมูลสำหรับการจัดการในหน้าผู้จัดการ
     const usersSnap = await getDocs(collection(db, "users"));
     const users = usersSnap.docs.map(doc => doc.data());
     const leavesSnap = await getDocs(collection(db, "leaves"));
@@ -367,6 +405,7 @@ window.renderManagerUI = async () => {
 };
 
 window.renderEmployeeUI = async () => {
+    // 🔍 [SELECT] รีเฟรชข้อมูลส่วนตัว
     const userDoc = await getDoc(doc(db, "users", currentUser.uid));
     if(userDoc.exists()) currentUser = userDoc.data();
 
@@ -381,6 +420,7 @@ window.renderEmployeeUI = async () => {
         document.getElementById('statAnnBal').innerText = currentUser.leaveBalances.annual; document.getElementById('statAnnUsed').innerText = total.annual - currentUser.leaveBalances.annual;
     }
 
+    // 🔍 [SELECT + WHERE] ดึงประวัติการลาเฉพาะของตัวเอง
     const leavesSnap = await getDocs(query(collection(db, "leaves"), where("empID", "==", currentUser.uid)));
     const leaves = leavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -393,7 +433,7 @@ window.renderEmployeeUI = async () => {
         });
     }
 
-    // Time Tracking Data
+    // 🔍 [SELECT + WHERE] ดึงประวัติลงเวลาของตัวเองในวันนี้
     if(document.getElementById('empCurrentDateDisplay')) document.getElementById('empCurrentDateDisplay').innerText = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
     const todayStr = new Date().toLocaleDateString('en-CA');
     const q = query(collection(db, "workRecords"), where("empID", "==", currentUser.uid), where("workDate", "==", todayStr));
@@ -412,7 +452,7 @@ window.renderEmployeeUI = async () => {
         if (!data.timeOut) {
             btnStamp.disabled = false; btnStamp.className = "btn btn-danger btn-lg w-100 rounded-pill shadow-sm"; btnStamp.innerHTML = 'แสตมป์ออกงาน';
         } else {
-            btnStamp.disabled = true; btnStamp.className = "btn btn-outline-secondary btn-lg w-100 rounded-pill"; btnStamp.innerHTML = 'บันริกเวลาครบแล้ว';
+            btnStamp.disabled = true; btnStamp.className = "btn btn-outline-secondary btn-lg w-100 rounded-pill"; btnStamp.innerHTML = 'บันทึกเวลาครบแล้ว';
         }
     } else {
         document.getElementById('displayCheckIn').innerText = '-'; document.getElementById('displayCheckOut').innerText = '-';
