@@ -83,12 +83,47 @@
                             <h5 class="menu-title">ข้อมูลพนักงานในระบบ</h5>
                             <div class="table-responsive border-0">
                                 <table class="table table-custom text-center align-middle">
-                                    <thead><tr><th>รหัส</th><th>ชื่อพนักงาน</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
+                                    <thead><tr><th>รหัส</th><th>เลข ปชช.</th><th>ชื่อพนักงาน</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead>
                                     <tbody id="adminEmployeeTableBody"></tbody>
                                 </table>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Edit Employee -->
+    <div class="modal fade" id="editEmpModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 p-3" style="border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="fw-bold text-dark"><i class="bi bi-pencil-square text-primary me-2"></i>แก้ไขข้อมูลพนักงาน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">รหัสพนักงาน (แก้ไขไม่ได้)</label>
+                        <input type="text" class="form-control bg-light" id="editEmpIdDisplay" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">เลขบัตรประชาชน <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editEmpIdCardInput" maxlength="13" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ชื่อ - นามสกุล <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editEmpNameInput" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label">ระดับสิทธิ์</label>
+                        <select class="form-select" id="editEmpRoleInput">
+                            <option value="employee">Staff (พนักงาน)</option>
+                            <option value="leader">Leader (ผู้จัดการ)</option>
+                            <option value="admin">Admin (แอดมิน)</option>
+                        </select>
+                    </div>
+                    <button type="button" id="btnSaveEdit" class="btn btn-primary w-100 py-2 fw-bold" onclick="window.saveEditEmployee()">บันทึกการเปลี่ยนแปลง</button>
                 </div>
             </div>
         </div>
