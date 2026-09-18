@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ==========================================
-// 1. Firebase Configuration (เปลี่ยนเป็นค่าของคุณ)
+// 1. Firebase Configuration
 // ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyDi_YY7DbZoKWo42LDFxe2NYJs8jeIc21E",
@@ -65,7 +65,6 @@ window.handleLogin = async (e) => {
         
         if (userDoc.exists() && userDoc.data().password === passInp) {
             const userData = userDoc.data();
-            // เก็บ docId สำรองไว้ด้วยเผื่อกรณีฐานข้อมูลไม่มีฟิลด์ uid
             userData.uid = userData.uid || userDoc.id; 
             sessionStorage.setItem('hr_currentUser', JSON.stringify(userData));
             window.location.href = userData.role === 'leader' ? 'manager.html' : `${userData.role}.html`;
@@ -298,7 +297,6 @@ const refreshUI = async () => {
 window.renderAdminUI = async () => {
     if(!document.getElementById('adminEmployeeTableBody')) return;
     
-    // ดึงข้อมูล Users พร้อมเก็บ ID ของ Document ไว้สำรอง (docId)
     const usersSnap = await getDocs(collection(db, "users"));
     const users = usersSnap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
     
@@ -309,16 +307,19 @@ window.renderAdminUI = async () => {
     empTbody.innerHTML = '';
     
     users.forEach(u => {
-        // ใช้ uid หากไม่มีให้ใช้ docId ที่เป็นตัวหลักแทน
         const safeUid = u.uid || u.docId; 
         
+        // แก้ไข: เพิ่มคอลัมน์ idCard และใช้ d-flex gap-2 เพื่อจัดปุ่มให้สวยงาม
         empTbody.innerHTML += `<tr>
             <td><span class="fw-bold text-primary">${safeUid}</span></td>
+            <td><span class="text-muted">${u.idCard || '-'}</span></td>
             <td><span class="fw-medium">${u.Name || '-'} ${u.SurName || ''}</span></td>
             <td>${getRoleBadge(u.role)}</td>
             <td>
-                <button class="btn btn-sm btn-outline-secondary me-1" onclick="window.openEditEmployeeModal('${safeUid}')"><i class="bi bi-pencil"></i> แก้ไข</button>
-                <button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${safeUid}')"><i class="bi bi-trash"></i> ลบ</button>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.openEditEmployeeModal('${safeUid}')"><i class="bi bi-pencil"></i> แก้ไข</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="window.deleteEmployee('${safeUid}')"><i class="bi bi-trash"></i> ลบ</button>
+                </div>
             </td>
         </tr>`;
     });
